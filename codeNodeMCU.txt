@@ -1,0 +1,98 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>
+#include <Ethernet.h>
+#include <SPI.h>
+#include "RestClient.h"
+
+//para conexion a red
+const char* ssid = "INFINITUm";
+const char* password = "ejemplo123";
+
+//variables de programa
+const int btnR =16; //D0
+const int btnA = 5; //D1
+int val1=0,val2=0;
+int ant1=0,ant2=0;
+int est1=0,est2=0;
+
+void setup() 
+{
+  //modo de pin
+  pinMode(btnR,INPUT);
+  pinMode(btnA,INPUT);
+  Serial.begin(115200);
+  //establecer parametro wifi
+  WiFi.begin(ssid, password);
+  //iniciar conexion
+  while (WiFi.status() != WL_CONNECTED) 
+  {
+    delay(1000);
+    Serial.println("Espere conectando...");
+  }
+  Serial.println("** Conexion Establecida **");
+}
+
+
+
+void post_boton(String nombre, String carac){
+    //creacion de cliente http
+    HTTPClient http; 
+    //ruta de api
+    http.begin("http://192.168.43.193:3000/boton");
+    http.addHeader("Content-Type", "application/json");
+    //creacion de json
+    StaticJsonBuffer<200> jsonBuffer;
+    char json[256];
+    JsonObject& root = jsonBuffer.createObject();
+    root["name"] = nombre;
+    root["carac"] = carac;
+    root.printTo(json, sizeof(json));
+    Serial.println(json);
+    //envio de solicitud
+    int httpCode = http.POST(json);
+    http.end(); //Close connection
+}
+
+
+void loop() 
+{
+  
+  //enviar datos mientras este conectado
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    val1= digitalRead(btnR);
+    val2= digitalRead(btnA);
+
+    //control de estados
+    if ((val1 == HIGH) && (ant1 == LOW)){
+      est1=1;
+      delay(10);
+    }
+    else{
+      est1=0;
+      delay(10);
+    }
+    if ((val2 == HIGH) && (ant2 == LOW)){
+      est2=1;
+      delay(10);
+    }
+      else{
+      est2=0;
+      delay(10);
+    }
+    ant1 = val1;
+    ant2 = val2;
+
+    //validaciones de estados
+    if (est1==1 and est2==1){
+      post_boton("Amarillo","soy rojo con azul");
+    }
+    else if (est1==1 and est2==0) {
+      post_boton("Rojo","soy rojo");
+    }
+    else if (est1==0 and est2==1) {
+      post_boton("Azul","soy azul");
+    }
+  }
+}
