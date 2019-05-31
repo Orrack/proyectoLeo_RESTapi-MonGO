@@ -9,6 +9,11 @@ import (
 	"github.com/gorilla/mux"
 	//para obtener datos del config.toml
 	"github.com/BurntSushi/toml"
+	//librerias de tiempo
+	"fmt"
+	"strings"
+	"time"
+	//import math
 )
 
 //estructura para conexion
@@ -34,7 +39,8 @@ var db *mgo.Database
 
 //nombre de la collection *se puede ajustar*
 const (
-	COLLECTION = "regBoton"
+	COLLECTION = "sensores"
+	TOKENS = "permisos"
 )
 
 // Establecer coneccion a BD mongo
@@ -47,6 +53,11 @@ func (m *botonDAO) Connect() {
 }
 
 //------------------------------------------------------------------------------
+func (m *botonDAO) FindToken(tok string) ([]NODEMCU, error) {
+	var node []NODEMCU
+	err := db.C(TOKENS).Find(bson.M{"token":tok,"status":"OK"}).All(&node)
+	return node, err
+}
 
 // buscar a todos los registros
 func (m *botonDAO) FindAll() ([]BOTON, error) {
@@ -84,10 +95,20 @@ func (m *botonDAO) Update(btn BOTON) error {
 
 //estructura de json para la BD
 type BOTON struct {
-	ID          bson.ObjectId `bson:"_id" json:"id"`
-	Name        string        `bson:"name" json:"name"`
-	Carac 			string        `bson:"carac" json:"carac"`
+	ID          	bson.ObjectId 	`bson:"_id" json:"id"`
+	H   		float64        	`bson:"humedad" json:"humedad"`
+	T		float64        	`bson:"temperatura" json:"temperatura"`
+	V		float64 	`bson:"velAire" json:"velAire"`
+	Fecha		string		`bson:"fecha" json:"fecha"`
+	Hora		string		`bson:"hora" json:"hora"`
 }
+type NODEMCU struct {
+	ID          	bson.ObjectId `bson:"_id" json:"id"`
+	D   		string        `bson:"dispositivo" json:"dispositivo"`
+	T		string        `bson:"token" json:"token"`
+	S		string        `bson:"status" json:"status"`
+}
+
 
 //reciclan variables para proximos metodos
 var config = Config{}
@@ -116,18 +137,32 @@ func Find_Reg(w http.ResponseWriter, r *http.Request) {
 
 // Peticion Post para insertar valor
 func Create_Reg(w http.ResponseWriter, r *http.Request) {
+	x := r.Header.Get("Authorization")
+	auth := strings.Replace(x,"Basic ","",-1)
 	defer r.Body.Close()
 	var btn BOTON
-	if err := json.NewDecoder(r.Body).Decode(&btn); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+	node, err := dao.FindToken(auth)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "No existe Token")
 		return
 	}
-	btn.ID = bson.NewObjectId()
-	if err := dao.Insert(btn); err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	respondWithJson(w, http.StatusCreated, btn)
+		if node != nil{
+			if err := json.NewDecoder(r.Body).Decode(&btn); err != nil {
+				respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+				return
+			}
+			btn.ID = bson.NewObjectId()
+			t := time.Now()
+			fec :=""+fmt.Sprintf("%d-%02d-%02d",t.Year(), t.Month(), t.Day())
+			hor := ""+fmt.Sprintf("%02d:%02d:%02d",t.Hour(), t.Minute(), t.Second())
+			btn.Fecha=fec
+			btn.Hora=hor
+			if err := dao.Insert(btn); err != nil {
+				respondWithError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			respondWithJson(w, http.StatusCreated, btn)
+	 		}
 }
 
 // peticion put para actualizar registro
@@ -182,12 +217,13 @@ func init() {
 // definicion de rutas para api
 func main() {
 	r := mux.NewRouter()
-	r.HandleFunc("/boton", All_Reg).Methods("GET")
-	r.HandleFunc("/boton", Create_Reg).Methods("POST")
+
+	r.HandleFunc("/sensor", All_Reg).Methods("GET")
+	r.HandleFunc("/sensor", Create_Reg).Methods("POST")
 	//r.HandleFunc("/boton", Update_Reg).Methods("PUT")
 	//r.HandleFunc("/boton", Delete_Reg).Methods("DELETE")
-	r.HandleFunc("/boton/{id}", Find_Reg).Methods("GET")
-	if err := http.ListenAndServe(":3000", r); err != nil {
+	r.HandleFunc("/sensor/{id}", Find_Reg).Methods("GET")
+	if err := http.ListenAndServe(":3312", r); err != nil {
 		log.Fatal(err)
 	}
 }
